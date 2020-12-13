@@ -19,21 +19,21 @@ const socket = io("http://localhost:8080");
 socket.on("roomBroadcast", async ({ msg }) => {
   console.log(msg);
 
-  await onSignaling(true);
+  await onSDPSignal(true);
 });
 
 socket.on("ice_candidate", async ({ candidate }) => {
   await peerConn.addIceCandidate(new RTCIceCandidate(candidate));
 });
 
-socket.on("signaling", async ({ isOffer, desc }) => {
+socket.on("sdp", async ({ isOffer, desc }) => {
   console.log(`收到${isOffer ? "offer" : "answer"}`);
 
   // 設定遠端流配置
   await peerConn.setRemoteDescription(desc);
 
   if (isOffer) {
-    await onSignaling(!isOffer);
+    await onSDPSignal(!isOffer);
   }
 });
 
@@ -117,8 +117,7 @@ function initPeerConnection() {
       },
     ],
   };
-  const PeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
-  peerConn = new PeerConnection(configuration);
+  peerConn = new RTCPeerConnection(configuration);
 
   // 增加本地串流
   peerConn.addStream(localStream);
@@ -140,34 +139,34 @@ function initPeerConnection() {
 
   // 監聽是否有流傳入，如果有的話就顯示影像
   peerConn.onaddstream = ({ stream }) => {
+    // 接收流並顯示遠端視訊
     remoteVideo.srcObject = stream;
-
-    console.log("接收流並顯示遠端視訊");
   };
 }
+
 /**
  * 處理信令
  * @param {Boolean} isOffer
  */
-async function onSignaling(isOffer) {
+async function onSDPSignal(isOffer) {
   try {
     if (!peerConn) {
       console.log("尚未開啟視訊");
       return;
     }
 
-    // 創建 offer/answer 信令
-    offer = await peerConn[isOffer ? "createOffer" : "createAnswer"]({
+    // 創建SDP信令
+    const localSDP = await peerConn[isOffer ? "createOffer" : "createAnswer"]({
       offerToReceiveAudio: streamOutput.audio, // 是否傳送聲音流給對方
       offerToReceiveVideo: streamOutput.video, // 是否傳送影像流給對方
     });
 
-    // 設定本地流配置
-    await peerConn.setLocalDescription(offer);
+    // 設定本地SDP信令
+    await peerConn.setLocalDescription(localSDP);
 
-    // 寄出 Offer/Answer
+    // 寄出SDP信令
     console.log(`寄出 ${isOffer ? "offer" : "answer"}`);
-    socket.emit("signaling", {
+    socket.emit("sdp", {
       isOffer,
       desc: peerConn.localDescription,
     });
